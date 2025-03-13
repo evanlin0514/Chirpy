@@ -24,9 +24,14 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler{
 }
 
 func (cfg *apiConfig)showCounter(w http.ResponseWriter, r *http.Request){
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	times := fmt.Sprintf("Hits: %d", cfg.fileserverHits.Load())
+	times := fmt.Sprintf(`<html>
+		<body>
+		  <h1>Welcome, Chirpy Admin</h1>
+		  <p>Chirpy has been visited %d times!</p>
+		</body>
+	  </html>`, cfg.fileserverHits.Load())
 	w.Write([]byte(times))
 }
 
@@ -39,17 +44,17 @@ func main(){
 	var config apiConfig
 	homepage := http.StripPrefix("/app", http.FileServer(http.Dir(".")))
 	mux.Handle("/app/", config.middlewareMetricsInc(homepage))
-		// Option 2: Use http.StripPrefix to remove the duplicated path segment
-		mux.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir("./assets"))))
+	// Option 2: Use http.StripPrefix to remove the duplicated path segment
+	mux.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir("./assets"))))
 
-	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request){
+	mux.HandleFunc("GET /admin/metrics", func(w http.ResponseWriter, r *http.Request){
 		config.showCounter(w, r)
 	})
-	mux.HandleFunc("POST /reset", func(w http.ResponseWriter, r *http.Request){
+	mux.HandleFunc("POST /admin/reset", func(w http.ResponseWriter, r *http.Request){
 		config.resetCounter(w, r)
 	})
 
-	mux.HandleFunc("GET /healthz", handler)
+	mux.HandleFunc("GET /api/healthz", handler)
 	
 	server := &http.Server{
 		Addr: ":8080",
