@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"encoding/json"
 	"log"
+	"strings"
 )
 
 type apiConfig struct {
@@ -47,7 +48,6 @@ func respondWithJSON (w http.ResponseWriter, code int, payload interface{}) erro
 		return err
 	}
 	w.Header().Set("Content-Type", "apllication/json")
-	w.Header().Set("Access-control-Allow-Origin", "*")
 	w.WriteHeader(code)
 	w.Write(res)
 	return nil
@@ -57,20 +57,35 @@ func respondWithError(w http.ResponseWriter, code int, msg string) error {
     return respondWithJSON(w, code, map[string]string{"error": msg})
 }
 
+type cleanBody struct {
+	Body string `json:"cleaned_body"`
+}
+type parameters struct {
+	Body string `json:"body"`
+}
+
+func cleanInput(str string) cleanBody{
+	clean := cleanBody{
+		Body: str,
+	}
+
+	banWords := []string{"kerfuffle", "sharbert", "fornax"}
+	words := strings.Split(clean.Body, " ")
+	for i, word := range words {
+		for _, ban := range banWords{
+			if strings.ToLower(word) == ban {
+				words[i] = "****"
+			}
+		}
+	}
+	clean.Body = strings.Join(words, " ")
+	return clean
+}
 
 func validHanlder (w http.ResponseWriter, r *http.Request){
 	// decode the request body
-	type parameters struct {
-		Body string `json:"body"`
-	}
-
-	type returnVals struct {
-		Valid bool `json:"valid"`
-	}
-
 	decoder := json.NewDecoder(r.Body)
 	param := parameters{}
-	result := returnVals{}
 	err := decoder.Decode(&param)
 	if err != nil {
 		log.Printf("Error decoding params: %v", err)
@@ -84,9 +99,8 @@ func validHanlder (w http.ResponseWriter, r *http.Request){
 		return
 	}
 
-	result.Valid = true
-	respondWithJSON(w, 200, result)
-
+	clean := cleanInput(param.Body)
+	respondWithJSON(w, 200, clean)
 }
 
 func main(){
@@ -94,17 +108,20 @@ func main(){
 	var config apiConfig
 	homepage := http.StripPrefix("/app", http.FileServer(http.Dir(".")))
 	mux.Handle("/app/", config.middlewareMetricsInc(homepage))
+
 	// Option 2: Use http.StripPrefix to remove the duplicated path segment
 	mux.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir("./assets"))))
 
 	mux.HandleFunc("GET /admin/metrics", func(w http.ResponseWriter, r *http.Request){
 		config.showCounter(w, r)
 	})
+
 	mux.HandleFunc("POST /admin/reset", func(w http.ResponseWriter, r *http.Request){
 		config.resetCounter(w, r)
 	})
 
 	mux.HandleFunc("GET /api/healthz", handler)
+
 	mux.HandleFunc("POST /api/validate_chirp", validHanlder)
 	
 	server := &http.Server{
