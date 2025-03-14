@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"sync/atomic"
+	"encoding/json"
+	"log"
 )
 
 type apiConfig struct {
@@ -39,6 +41,54 @@ func (cfg *apiConfig)resetCounter(w http.ResponseWriter, r *http.Request){
 	cfg.fileserverHits.Store(0)
 }
 
+func respondWithJSON (w http.ResponseWriter, code int, payload interface{}) error {
+	res, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "apllication/json")
+	w.Header().Set("Access-control-Allow-Origin", "*")
+	w.WriteHeader(code)
+	w.Write(res)
+	return nil
+}
+
+func respondWithError(w http.ResponseWriter, code int, msg string) error {
+    return respondWithJSON(w, code, map[string]string{"error": msg})
+}
+
+
+func validHanlder (w http.ResponseWriter, r *http.Request){
+	// decode the request body
+	type parameters struct {
+		Body string `json:"body"`
+	}
+
+	type returnVals struct {
+		Valid bool `json:"valid"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	param := parameters{}
+	result := returnVals{}
+	err := decoder.Decode(&param)
+	if err != nil {
+		log.Printf("Error decoding params: %v", err)
+		respondWithError(w, 500, "something went wrong")
+		return
+	}
+
+	//check if valid
+	if len(param.Body) > 200 {
+		respondWithError(w, 400, "Chirp is too long")
+		return
+	}
+
+	result.Valid = true
+	respondWithJSON(w, 200, result)
+
+}
+
 func main(){
 	mux := http.NewServeMux()
 	var config apiConfig
@@ -55,6 +105,7 @@ func main(){
 	})
 
 	mux.HandleFunc("GET /api/healthz", handler)
+	mux.HandleFunc("POST /api/validate_chirp", validHanlder)
 	
 	server := &http.Server{
 		Addr: ":8080",
