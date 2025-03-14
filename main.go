@@ -69,13 +69,16 @@ func cleanInput(str string) cleanBody{
 		Body: str,
 	}
 
+	banMaps := make(map[string]bool)
 	banWords := []string{"kerfuffle", "sharbert", "fornax"}
+	for _, ban := range banWords{
+		banMaps[ban] = true
+	}
+
 	words := strings.Split(clean.Body, " ")
 	for i, word := range words {
-		for _, ban := range banWords{
-			if strings.ToLower(word) == ban {
-				words[i] = "****"
-			}
+		if banMaps[strings.ToLower(word)] {
+			words[i] = "****"
 		}
 	}
 	clean.Body = strings.Join(words, " ")
