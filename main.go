@@ -1,15 +1,21 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
-	"sync/atomic"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net/http"
+	"os"
 	"strings"
+	"sync/atomic"
+	"github.com/evanlin0514/Chirpy/internal/database"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 type apiConfig struct {
+	db *database.Queries
 	fileserverHits atomic.Int32
 }
 
@@ -107,8 +113,18 @@ func validHanlder (w http.ResponseWriter, r *http.Request){
 }
 
 func main(){
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+	dbQueries := database.New(db)
+	config := &apiConfig{
+		db: dbQueries,
+	}
+
 	mux := http.NewServeMux()
-	var config apiConfig
 	homepage := http.StripPrefix("/app", http.FileServer(http.Dir(".")))
 	mux.Handle("/app/", config.middlewareMetricsInc(homepage))
 
