@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -9,7 +10,10 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"time"
+
 	"github.com/evanlin0514/Chirpy/internal/database"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -17,6 +21,7 @@ import (
 type apiConfig struct {
 	db *database.Queries
 	fileserverHits atomic.Int32
+	platform string
 }
 
 func handler(w http.ResponseWriter, r *http.Request){
@@ -112,6 +117,46 @@ func validHanlder (w http.ResponseWriter, r *http.Request){
 	respondWithJSON(w, 200, clean)
 }
 
+func (cfg *apiConfig) addUser (w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	body := parameters{}
+	err := decoder.Decode(&body)
+	if err != nil {
+		log.Printf("error decoding params: %v", err)
+		respondWithError(w, 500, "something went wrong")
+		return
+	}
+
+	params := database.CreateUserParams{
+		ID: uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Email: body.Body,
+	}
+
+	user, err := cfg.db.CreateUser(context.Background(), params)
+	if err != nil{
+		log.Printf("error creating user: %v", err)
+		respondWithError(w, 500, "something went wrong")
+		return
+	}
+
+	respondWithJSON(w, 201, user)
+}
+
+func(cfg *apiConfig) resetUser (w http.ResponseWriter, r *http.Request) {
+	if cfg.platform != "dev" {
+		respondWithError(w, 403, "Forbidden")
+		return
+	}
+	err := cfg.db.ResetUser(context.Background())
+	if err != nil {
+		log.Printf("error reseting users table")
+		respondWithError(w, 500, "something went wrong")
+		return
+	}
+}
+
 func main(){
 	err := godotenv.Load()
 	if err != nil {
@@ -119,9 +164,13 @@ func main(){
 	}
 	dbURL := os.Getenv("DB_URL")
 	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal("error connecting to database.")
+	}
 	dbQueries := database.New(db)
 	config := &apiConfig{
 		db: dbQueries,
+		platform: os.Getenv("PLATFORM"),
 	}
 
 	mux := http.NewServeMux()
@@ -136,12 +185,16 @@ func main(){
 	})
 
 	mux.HandleFunc("POST /admin/reset", func(w http.ResponseWriter, r *http.Request){
-		config.resetCounter(w, r)
+		config.resetUser(w, r)
 	})
 
 	mux.HandleFunc("GET /api/healthz", handler)
 
 	mux.HandleFunc("POST /api/validate_chirp", validHanlder)
+
+	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request){
+		config.addUser(w, r)
+	})
 	
 	server := &http.Server{
 		Addr: ":8080",
