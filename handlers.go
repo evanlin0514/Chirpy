@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 	"fmt"
+	"strings"
 	"context"
     "github.com/evanlin0514/Chirpy/internal/database"
     "github.com/google/uuid"
@@ -57,6 +58,10 @@ func (cfg *apiConfig) addUser (w http.ResponseWriter, r *http.Request) {
 
 	user, err := cfg.db.CreateUser(context.Background(), params)
 	if err != nil{
+		if strings.Contains(err.Error(), "duplicate key"){
+			log.Printf("user already existed: %v", err)
+			respondWithError(w, 500, "something went wrong")
+		}
 		log.Printf("error creating user: %v", err)
 		respondWithError(w, 500, "something went wrong")
 		return
